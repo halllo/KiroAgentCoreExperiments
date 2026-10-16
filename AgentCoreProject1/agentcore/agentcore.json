@@ -18,7 +18,20 @@
       "protocol": "HTTP"
     }
   ],
-  "memories": [],
+  "memories": [
+    {
+      "name": "CustomerAssistantMemory",
+      "eventExpiryDuration": 7,
+      "strategies": [
+        {
+          "type": "USER_PREFERENCE",
+          "namespaceTemplates": [
+            "/users/{actorId}/preferences"
+          ]
+        }
+      ]
+    }
+  ],
   "knowledgeBases": [],
   "credentials": [],
   "evaluators": [],

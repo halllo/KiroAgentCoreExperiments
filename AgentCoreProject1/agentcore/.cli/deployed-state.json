@@ -9,8 +9,14 @@
             "roleArn": "arn:aws:iam::278581056849:role/AgentCore-AgentCoreProjec-ApplicationAgentCustomerA-l3NSokYZlPRC"
           }
         },
+        "memories": {
+          "CustomerAssistantMemory": {
+            "memoryId": "AgentCoreProject1_CustomerAssistantMemory-mGsfj0Gqjg",
+            "memoryArn": "arn:aws:bedrock-agentcore:us-west-2:278581056849:memory/AgentCoreProject1_CustomerAssistantMemory-mGsfj0Gqjg"
+          }
+        },
         "stackName": "AgentCore-AgentCoreProject1-default",
-        "deployHash": "eca75d26897f0315"
+        "deployHash": "f46ca7e95e2462ac"
       }
     }
   }
