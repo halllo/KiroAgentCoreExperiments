@@ -1,3 +1,17 @@
 {
-  "targets": {}
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "CustomerAssistantAgent": {
+            "runtimeId": "AgentCoreProject1_CustomerAssistantAgent-xcPH0vDW35",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-west-2:278581056849:runtime/AgentCoreProject1_CustomerAssistantAgent-xcPH0vDW35",
+            "roleArn": "arn:aws:iam::278581056849:role/AgentCore-AgentCoreProjec-ApplicationAgentCustomerA-l3NSokYZlPRC"
+          }
+        },
+        "stackName": "AgentCore-AgentCoreProject1-default",
+        "deployHash": "eca75d26897f0315"
+      }
+    }
+  }
 }
