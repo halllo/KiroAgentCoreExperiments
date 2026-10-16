@@ -1,0 +1,3 @@
+# The AWS Lambda Python runtime already bundles boto3; pinning here keeps local testing
+# and any packaged deployment on a known version.
+boto3==1.43.114
