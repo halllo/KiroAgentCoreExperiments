@@ -49,3 +49,16 @@ Before writing any Python that uses AgentCore or Strands Agents (agents, tools, 
 - Treat `agentcore.json` and `agentcore/.env.local` as the source of truth for runtime config (memory ID, gateway URL, env vars, execution role, resource ARNs).
 - Read values (IDs, ARNs, URLs) from these files or from `agentcore status` rather than hardcoding them.
 - Keep changes to these files minimal and intentional.
+
+## Editing `agentcore.json`
+
+- **ALWAYS run `agentcore validate` after editing `agentcore.json`.** Fix any reported errors before moving on (deploying, running, or invoking).
+- Runtime `envVars` are arrays of name/value objects, not key/value maps:
+
+  ```json
+  "envVars": [{ "name": "KEY", "value": "VALUE" }]
+  ```
+
+- **NEVER write `${SHELL_VARIABLE}` or `${PARAM}` placeholders into `agentcore.json`.** The CLI does not expand environment variables in this file. Placeholders propagate verbatim into the deployed CDK stack and the runtime IAM policy, producing `AccessDenied` errors at invoke time.
+  - Resolve the value yourself first (e.g., run the lookup CLI command to get the real memory ID).
+  - Then write the **literal** value into `agentcore.json`.
