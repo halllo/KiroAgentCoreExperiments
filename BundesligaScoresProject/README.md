@@ -1,6 +1,8 @@
-# AgentCore Project
+# Bundesliga Scores Agent
 
-This project was created with the [AgentCore CLI](https://github.com/aws/agentcore-cli).
+A standalone AgentCore project, separate from `AgentCoreProject1/`, created with the
+[AgentCore CLI](https://github.com/aws/agentcore-cli) (`agentcore create --skip-git`, so it lives in the workspace git
+repo with no nested `.git`). The product spec is in `../canvas.md`.
 
 ## Bundesliga Scores Agent: web search via AgentCore Gateway
 
@@ -69,6 +71,40 @@ agentcore invoke "How did Dortmund do?"
 Expected: Borussia Dortmund's latest Bundesliga result first (opponent, score, date), then the other matches from
 that matchday, then at least one source link. The Dortmund score should match bundesliga.com.
 
+Deployment target: account `278581056849`, `us-west-2` (`agentcore/aws-targets.json`, same as `AgentCoreProject1`).
+The deploy creates its own stack, `AgentCore-BundesligaScoresProject-default`.
+
+### Check the deployment
+
+```bash
+agentcore status
+aws cloudformation describe-stacks --stack-name AgentCore-BundesligaScoresProject-default \
+  --query "Stacks[0].StackStatus" --output text --no-cli-pager --region us-west-2
+```
+
+A healthy deploy shows the stack as `CREATE_COMPLETE` (or `UPDATE_COMPLETE`), the runtime `BundesligaScoresAgent` as
+`READY`, and `BundesligaGateway` with 1 web-search target. To check the gateway and target directly, take the gateway
+ID from `agentcore status`:
+
+```bash
+aws bedrock-agentcore-control get-gateway --gateway-identifier <gateway-id> \
+  --query "{status:status,auth:authorizerType}" --no-cli-pager --region us-west-2
+aws bedrock-agentcore-control list-gateway-targets --gateway-identifier <gateway-id> \
+  --query "items[].{name:name,status:status}" --no-cli-pager --region us-west-2
+```
+
+Expected: the gateway is `READY` with `AWS_IAM`, and the target `WebSearch` is `READY`. These checks cover the
+infrastructure only. The success test above is what proves the agent can call web search end to end.
+
+### Known limitations
+
+- If the gateway URL is set but the call fails (IAM denied, gateway unreachable), the error comes back as a raw
+  exception instead of a friendly message.
+- No AgentCore Memory is attached, so nothing carries over between sessions. Within one runtime session the agent
+  keeps the conversation history in process.
+- Out of scope today (see `../canvas.md`, row 11): UI, real auth, memory, a `get_fan_profile` tool, other
+  competitions, league tables, stats, predictions, domain/date filters, evals, cost tracking.
+
 ### Docs
 
 - [Web Search Tool](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-target-connector-web-search-tool.html)
@@ -80,25 +116,28 @@ that matchday, then at least one source link. The Dortmund score should match bu
 ## Project Structure
 
 ```
-my-project/
+BundesligaScoresProject/
 ├── AGENTS.md               # AI coding assistant context
+├── .agents/tasks/          # Plan, verification, and review notes from the build
 ├── agentcore/
-│   ├── agentcore.json      # Project config (agents, memories, credentials, gateways, evaluators)
-│   ├── aws-targets.json    # Deployment targets (account + region)
-│   ├── .env.local          # Secrets — API keys (gitignored)
+│   ├── agentcore.json      # Runtime + BundesligaGateway with the WebSearch connector target
+│   ├── aws-targets.json    # Deployment target (account + us-west-2)
+│   ├── .env.local          # Secrets (gitignored; unused today)
 │   ├── .llm-context/       # TypeScript type definitions for AI assistants
 │   │   ├── agentcore.ts    # AgentCoreProjectSpec types
 │   │   └── aws-targets.ts  # Deployment target types
 │   └── cdk/                # CDK infrastructure (@aws/agentcore-cdk)
-├── app/                    # Agent application code
-└── evaluators/             # Custom evaluator code (if any)
+└── app/BundesligaScoresAgent/
+    ├── main.py             # Entrypoint, system prompt (incl. synthetic favorite team)
+    ├── mcp_client/client.py  # SigV4 MCP client for the gateway
+    └── model/load.py       # Bedrock model (global.anthropic.claude-sonnet-4-5-20250929-v1:0)
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Node.js** 20.x or later
+- **Node.js** 20.x or later (the AWS SDK warns that releases after early January 2027 need Node 22+)
 - **Python 3.10+** and **uv** for Python agents ([install uv](https://docs.astral.sh/uv/getting-started/installation/))
 - **AWS credentials** configured (`aws configure` or environment variables)
 - **Docker** (only for Container build agents)
