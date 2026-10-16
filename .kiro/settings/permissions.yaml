@@ -1,0 +1,36 @@
+# .kiro/settings/permissions.yaml  (workspace scope)
+#
+# "YOLO mode": allow every capability without prompting.
+# Rule precedence is deny > ask > allow, so if you later want a safety floor,
+# add deny/ask rules below and they will win over these blanket allows.
+
+rules:
+  # File reads and writes anywhere.
+  - capability: fs_read
+    effect: allow
+  - capability: fs_write
+    effect: allow
+
+  # Any shell command.
+  - capability: shell
+    effect: allow
+
+  # Web research tools.
+  - capability: web_search
+    effect: allow
+  - capability: web_fetch
+    effect: allow
+
+  # Every tool on every MCP server (aws-docs, strands-agents, ...).
+  - capability: mcp
+    effect: allow
+
+  # Optional safety floor. Uncomment to block catastrophic commands even in YOLO mode.
+  # - capability: shell
+  #   effect: deny
+  #   match:
+  #     - "rm -rf /*"
+  #     - "rm -rf ~*"
+  #     - "sudo *"
+  #     - "git push --force*"
+  #     - "git push -f*"

@@ -14,6 +14,9 @@ dependencies = [
     "botocore[crt] >= 1.35.0",
     "mcp >= 1.28.1, < 2.0.0",
     "strands-agents >= 1.15.0",
+    # Provides the built-in current_time tool. Capped below 0.9.0 because
+    # current_time is deprecated in 0.8.x and its warning escalates in 0.9.0.
+    "strands-agents-tools >= 0.8.9, < 0.9.0",
     
 ]
 

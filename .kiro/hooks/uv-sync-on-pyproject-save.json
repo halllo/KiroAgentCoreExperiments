@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "uv sync on pyproject.toml save",
+      "trigger": "PostFileSave",
+      "description": "Runs uv sync in the CustomerAssistantAgent project whenever its pyproject.toml is saved, so new or updated dependencies are installed into .venv.",
+      "matcher": "pyproject\\.toml$",
+      "action": {
+        "type": "command",
+        "command": "cd /home/workshop/ReturnsRefundsAgentProject/AgentCoreProject1/app/CustomerAssistantAgent && uv sync",
+        "timeout": 300
+      }
+    }
+  ]
+}

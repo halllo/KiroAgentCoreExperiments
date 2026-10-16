@@ -2,6 +2,9 @@ from typing import Any
 from collections import OrderedDict
 from strands import Agent, tool
 import asyncio
+from datetime import date, timedelta
+# Strands community tools package; current_time is a ready-made @tool.
+from strands_tools import current_time
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from model.load import load_model
@@ -13,9 +16,27 @@ log = app.logger
 # Define a Streamable HTTP MCP Client
 mcp_clients = [get_streamable_http_mcp_client()]
 
+# The system prompt sets the agent's role and behavior for every turn.
+# Strands sends it to the model as the system message via Agent(system_prompt=...).
+# Docs: https://strandsagents.com/docs/api/python/strands.agent.agent/
 DEFAULT_SYSTEM_PROMPT = """
-You are a helpful assistant. Use tools when appropriate.
+You are a Returns & Refunds Assistant. When greeting the user, introduce yourself
+as the Returns & Refunds Assistant.
 
+The user you are talking to is an administrator, not a customer. Administrators
+can access customer data, orders, and return policies, and they act on behalf of
+customers.
+
+You help administrators:
+- Check whether a customer's order is eligible for a return
+- Calculate refund amounts
+- Answer questions about return policies
+
+Guidelines:
+- Be helpful and concise.
+- Use tools when appropriate to look up information rather than guessing.
+- Always confirm the details (customer, order, items, and refund amount) with the
+  administrator before processing any return or refund.
 """
 
 
@@ -30,6 +51,159 @@ def add_numbers(a: int, b: int) -> int:
     """Return the sum of two numbers"""
     return a+b
 tools.append(add_numbers)
+
+
+# get_current_time: reuse the Strands built-in instead of re-implementing it.
+# The model sees this tool under the name "current_time". It returns the current
+# date/time in ISO 8601, which the agent needs to judge return windows.
+# Note: deprecated in strands-agents-tools 0.8.x (still works, logs a warning).
+# Docs: https://strandsagents.com/docs/user-guide/sdk/tools/community-tools-package/
+tools.append(current_time)
+
+
+# --- Mock data -------------------------------------------------------------
+# Simple in-memory dicts stand in for real data sources (DynamoDB later on).
+
+# Purchases are stored as "days ago" so the sample data stays valid whenever
+# the workshop runs; order_lookup turns this into a concrete date.
+ORDERS: dict[str, dict[str, Any]] = {
+    "ORD-001": {"customer_id": "C-01", "product_id": "P-001", "product_name": "iPhone 15 Pro",
+                "status": "DELIVERED", "purchase_days_ago": 5},
+    "ORD-002": {"customer_id": "C-02", "product_id": "P-003", "product_name": "Kindle Paperwhite",
+                "status": "DELIVERED", "purchase_days_ago": 45},
+    # No purchase age was specified for this order, so it is left as None.
+    "ORD-003": {"customer_id": "C-01", "product_id": "P-005", "product_name": "PlayStation 5",
+                "status": "SHIPPED", "purchase_days_ago": None},
+}
+
+CUSTOMERS: dict[str, dict[str, str]] = {
+    "C-01": {"name": "Rajesh Kumar", "country": "IN", "email": "rajesh@example.com"},
+    "C-02": {"name": "Sarah Johnson", "country": "US", "email": "sarah@example.com"},
+    "C-03": {"name": "James Wilson", "country": "UK", "email": "james@example.com"},
+}
+
+PRODUCTS: dict[str, dict[str, str]] = {
+    "P-001": {"name": "iPhone 15 Pro", "brand": "Apple", "category": "phone"},
+    "P-002": {"name": "Kindle Paperwhite", "brand": "Amazon", "category": "e-book"},
+    "P-003": {"name": "iPad Air", "brand": "Apple", "category": "tablet"},
+}
+
+# Keyed by category so policy_retrieval can match on the category name.
+POLICIES: dict[str, str] = {
+    "electronics": "Electronics: 30-day return window. 100% refund if the item is unopened.",
+    "clothing": "Clothing: 60-day return window. Full refund.",
+    "books": "Books: 14-day return window. 50% refund.",
+}
+
+
+# --- Tools -------------------------------------------------------------------
+# @tool turns each function into a tool the model can call by name. Strands
+# builds the tool spec from the docstring (description + Args) and type hints,
+# so the docstring is effectively the model's instructions for the tool.
+# Docs: https://strandsagents.com/docs/user-guide/sdk/tools/custom-tools/
+
+@tool
+def order_lookup(order_id: str) -> str:
+    """Look up order details by order ID.
+
+    Args:
+        order_id: The order identifier, e.g. "ORD-001".
+
+    Returns:
+        A formatted string with the customer ID, product, status, and purchase
+        date of the order, or a not-found message.
+    """
+    order = ORDERS.get(order_id.strip().upper())
+    if order is None:
+        return f"No order found with ID {order_id}."
+
+    # Convert "days ago" into a real date so the agent can compare it with
+    # the current time when checking a return window.
+    days_ago = order["purchase_days_ago"]
+    if days_ago is None:
+        purchased = "Not specified"
+    else:
+        purchase_date = date.today() - timedelta(days=days_ago)
+        purchased = f"{purchase_date.isoformat()} ({days_ago} days ago)"
+
+    return (
+        f"Order {order_id.strip().upper()}\n"
+        f"- Customer ID: {order['customer_id']}\n"
+        f"- Product: {order['product_name']} ({order['product_id']})\n"
+        f"- Status: {order['status']}\n"
+        f"- Purchase date: {purchased}"
+    )
+tools.append(order_lookup)
+
+
+@tool
+def user_lookup(user_id: str) -> str:
+    """Retrieve customer information by user ID.
+
+    Args:
+        user_id: The customer identifier, e.g. "C-01".
+
+    Returns:
+        A formatted string with the customer's name, country, and email,
+        or a not-found message.
+    """
+    customer = CUSTOMERS.get(user_id.strip().upper())
+    if customer is None:
+        return f"No customer found with ID {user_id}."
+    return (
+        f"Customer {user_id.strip().upper()}\n"
+        f"- Name: {customer['name']}\n"
+        f"- Country: {customer['country']}\n"
+        f"- Email: {customer['email']}"
+    )
+tools.append(user_lookup)
+
+
+@tool
+def product_lookup(product_id: str) -> str:
+    """Retrieve product information by product ID.
+
+    Args:
+        product_id: The product identifier, e.g. "P-001".
+
+    Returns:
+        A formatted string with the product's name, brand, and category,
+        or a not-found message.
+    """
+    product = PRODUCTS.get(product_id.strip().upper())
+    if product is None:
+        return f"No product found with ID {product_id}."
+    return (
+        f"Product {product_id.strip().upper()}\n"
+        f"- Name: {product['name']}\n"
+        f"- Brand: {product['brand']}\n"
+        f"- Category: {product['category']}"
+    )
+tools.append(product_lookup)
+
+
+@tool
+def policy_retrieval(query: str) -> str:
+    """Retrieve return policy information for product categories.
+
+    Known categories: electronics, clothing, books.
+
+    Args:
+        query: A question or keywords about return policies, e.g.
+            "electronics return window".
+
+    Returns:
+        The matching return policy details. If no category is mentioned in
+        the query, all policies are returned.
+    """
+    query_lower = query.lower()
+    matches = [policy for category, policy in POLICIES.items() if category in query_lower]
+    # Simple keyword matching keeps the demo easy to follow. When nothing
+    # matches, return every policy and let the model pick the relevant one.
+    if not matches:
+        matches = list(POLICIES.values())
+    return "\n".join(matches)
+tools.append(policy_retrieval)
 
 
 
