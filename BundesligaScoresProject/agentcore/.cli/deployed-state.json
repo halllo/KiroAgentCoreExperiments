@@ -1,3 +1,31 @@
 {
-  "targets": {}
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "BundesligaScoresAgent": {
+            "runtimeId": "BundesligaScoresProject_BundesligaScoresAgent-tv2eCz5rAm",
+            "runtimeArn": "arn:aws:bedrock-agentcore:us-west-2:278581056849:runtime/BundesligaScoresProject_BundesligaScoresAgent-tv2eCz5rAm",
+            "roleArn": "arn:aws:iam::278581056849:role/AgentCore-BundesligaScore-ApplicationAgentBundeslig-vEzjEJ4pgm1E"
+          }
+        },
+        "mcp": {
+          "gateways": {
+            "BundesligaGateway": {
+              "gatewayId": "bundesligascoresproject-bundesligagateway-bwzrmntzhl",
+              "gatewayArn": "arn:aws:bedrock-agentcore:us-west-2:278581056849:gateway/bundesligascoresproject-bundesligagateway-bwzrmntzhl",
+              "gatewayUrl": "https://bundesligascoresproject-bundesligagateway-bwzrmntzhl.gateway.bedrock-agentcore.us-west-2.amazonaws.com/mcp",
+              "targets": {
+                "WebSearch": {
+                  "targetId": "2XVTPBHCYW"
+                }
+              }
+            }
+          }
+        },
+        "stackName": "AgentCore-BundesligaScoresProject-default",
+        "deployHash": "02095372ee42fb06"
+      }
+    }
+  }
 }

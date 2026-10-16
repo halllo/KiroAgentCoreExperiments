@@ -23,7 +23,31 @@
   "credentials": [],
   "evaluators": [],
   "onlineEvalConfigs": [],
-  "agentCoreGateways": [],
+  "agentCoreGateways": [
+    {
+      "name": "BundesligaGateway",
+      "protocolType": "MCP",
+      "description": "MCP gateway that fronts the built-in web search connector",
+      "targets": [
+        {
+          "name": "WebSearch",
+          "targetType": "connector",
+          "connectorId": "web-search",
+          "configurations": [
+            {
+              "name": "WebSearch",
+              "description": "",
+              "parameterValues": {},
+              "parameterOverrides": []
+            }
+          ]
+        }
+      ],
+      "authorizerType": "AWS_IAM",
+      "enableSemanticSearch": false,
+      "exceptionLevel": "NONE"
+    }
+  ],
   "policyEngines": [],
   "configBundles": [],
   "abTests": [],

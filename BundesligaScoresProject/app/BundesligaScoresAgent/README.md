@@ -13,6 +13,9 @@ file defines a Starlette ASGI app with the chosen Agent framework SDK running wi
 
 `model/load.py` instantiates your chosen model provider.
 
+`mcp_client/client.py` connects the agent to the `BundesligaGateway` (web search) with SigV4, using the
+`mcp-proxy-for-aws` package. See the project README for the full setup.
+
 ## Input Validation
 
 Validate invocation input before forwarding it to Strands. Keep plain prompts typed as strings. If the app accepts a
@@ -24,6 +27,8 @@ invoking the agent.
 | Variable | Required | Description |
 | --- | --- | --- |
 | `LOCAL_DEV` | No | Set to `1` to use `.env.local` instead of AgentCore Identity |
+| `AGENTCORE_GATEWAY_BUNDESLIGAGATEWAY_URL` | Yes | Gateway URL, set by `agentcore deploy` (and by `agentcore dev` after a deploy). Without it the agent replies that web search is not configured |
+| `AGENTCORE_GATEWAY_BUNDESLIGAGATEWAY_AUTH_TYPE` | No | Set to `AWS_IAM` by deploy; informational |
 
 # Developing locally
 
@@ -36,7 +41,7 @@ Command Prompt, or `.\.venv\Scripts\activate.ps1` in Windows PowerShell.
 
 In a new terminal, you can invoke that server with:
 
-`agentcore invoke --dev "What can you do"`
+`agentcore invoke --dev "How did Dortmund do?"`
 
 # Deployment
 

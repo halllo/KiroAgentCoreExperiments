@@ -2,6 +2,81 @@
 
 This project was created with the [AgentCore CLI](https://github.com/aws/agentcore-cli).
 
+## Bundesliga Scores Agent: web search via AgentCore Gateway
+
+### What it does
+
+A casual fan asks "How did my team do?" and gets their team's latest Bundesliga result first (opponent, score,
+date), then a short list of the other results from that matchday, then the source links. Naming a team ("How did
+Dortmund do?") overrides the profile team. The agent never invents a score: if search returns no clear, recent
+result, it says it could not confirm the latest result. No memory, no UI, one tool.
+
+### Architecture
+
+```
+AgentCore Runtime (BundesligaScoresAgent, Strands)
+  └─ MCP over HTTPS, SigV4-signed (runtime execution role)
+     └─ AgentCore Gateway "BundesligaGateway" (MCP, inbound auth AWS_IAM, semantic search off)
+        └─ Target "WebSearch" (type connector, connectorId "web-search", us-west-2)
+           └─ MCP tool WebSearch
+```
+
+### How the gateway and target were added
+
+Run from this folder (no hand edits to `agentcore/agentcore.json`):
+
+```bash
+agentcore add gateway --name BundesligaGateway \
+  --description "MCP gateway that fronts the built-in web search connector" \
+  --protocol-type MCP --authorizer-type AWS_IAM --no-semantic-search --json
+agentcore add gateway-target --name WebSearch --gateway BundesligaGateway \
+  --type connector --connector web-search \
+  --description "Built-in AgentCore web search connector for recent Bundesliga results" --json
+agentcore validate
+```
+
+Semantic search is off because the gateway has a single tool. No connector version is pinned, so the default
+`web-search` version applies, and no domain or date filters are set.
+
+### How the agent connects
+
+- On deploy, the CDK constructs set `AGENTCORE_GATEWAY_BUNDESLIGAGATEWAY_URL` (and
+  `AGENTCORE_GATEWAY_BUNDESLIGAGATEWAY_AUTH_TYPE=AWS_IAM`) on the Runtime. No URL is hardcoded.
+  `agentcore dev` sets the same variables locally, but only after a first deploy.
+- `app/BundesligaScoresAgent/mcp_client/client.py` reads that URL and builds a Strands `MCPClient` with
+  `aws_iam_streamablehttp_client` from `mcp-proxy-for-aws`, which SigV4-signs requests for the `bedrock-agentcore`
+  service.
+- The CDK grants IAM automatically: the runtime role gets `bedrock-agentcore:InvokeGateway` on the gateway ARN, and
+  the gateway service role gets `bedrock-agentcore:InvokeWebSearch`.
+- If the URL is missing, the agent replies with a clear "Web search is not configured" message instead of answering
+  from model memory.
+
+### Profile team and citations
+
+The only synthetic data is one line in `SYSTEM_PROMPT` in `app/BundesligaScoresAgent/main.py`:
+`The user's favorite team is SC Freiburg.` Edit that line to change the profile team.
+
+Every answer lists its source links. The Web Search Tool acceptable-use terms require showing the citations and
+links of any search result used.
+
+### Deploy and run the success test
+
+```bash
+agentcore deploy
+agentcore invoke "How did Dortmund do?"
+```
+
+Expected: Borussia Dortmund's latest Bundesliga result first (opponent, score, date), then the other matches from
+that matchday, then at least one source link. The Dortmund score should match bundesliga.com.
+
+### Docs
+
+- [Web Search Tool](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-target-connector-web-search-tool.html)
+- [Gateway target configuration](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-add-target-api-target-config.html)
+- [Connector versions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-target-connector-versions.html)
+- [Gateway inbound auth](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-inbound-auth.html)
+- [Strands MCP client with SigV4 to a gateway](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-gateway-target.html)
+
 ## Project Structure
 
 ```
