@@ -15,7 +15,13 @@
       "codeLocation": "app/CustomerAssistantAgent/",
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
-      "protocol": "HTTP"
+      "protocol": "HTTP",
+      "envVars": [
+        {
+          "name": "MEMORY_CUSTOMERASSISTANTMEMORY_ID",
+          "value": "AgentCoreProject1_CustomerAssistantMemory-mGsfj0Gqjg"
+        }
+      ]
     }
   ],
   "memories": [

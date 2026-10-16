@@ -1,4 +1,5 @@
-from typing import Any
+import os
+from typing import Any, Optional
 from collections import OrderedDict
 from strands import Agent, tool
 import asyncio
@@ -7,6 +8,11 @@ from datetime import date, timedelta
 from strands_tools import current_time
 from strands.agent.conversation_manager.null_conversation_manager import NullConversationManager
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
+# AgentCore Memory integration for Strands (ships with bedrock-agentcore[strands-agents]).
+# Docs: https://strandsagents.com/docs/integrations/session-managers/agentcore-memory/
+#       https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/strands-sdk-memory.html
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 from model.load import load_model
 from mcp_client.client import get_streamable_http_mcp_client
 
@@ -216,28 +222,78 @@ for mcp_client in mcp_clients:
 def _make_conversation_manager():
     return NullConversationManager()
 
-# Reuses one Agent per session_id so each session keeps its own in-process
+
+# --- AgentCore Memory ----------------------------------------------------------
+# The AgentCore CLI injects the memory ID into the runtime as MEMORY_<NAME>_ID
+# (here: memory "CustomerAssistantMemory"). Locally it comes from agentcore/.env.local.
+MEMORY_ID: Optional[str] = os.environ.get("MEMORY_CUSTOMERASSISTANTMEMORY_ID")
+MEMORY_REGION = "us-west-2"
+DEFAULT_ACTOR_ID = "administrator"
+
+
+def _make_session_manager(actor_id: str, session_id: str) -> Optional[AgentCoreMemorySessionManager]:
+    """Build an AgentCore Memory session manager for one actor + session.
+
+    Args:
+        actor_id: Who the memories belong to (e.g. "administrator").
+        session_id: The conversation session the events are stored under.
+
+    Returns:
+        A session manager, or None when no memory ID is configured.
+    """
+    if not MEMORY_ID:
+        # Without a memory ID the agent still works, just without persistent memory.
+        log.warning("MEMORY_CUSTOMERASSISTANTMEMORY_ID is not set; running without memory")
+        return None
+
+    config = AgentCoreMemoryConfig(
+        memory_id=MEMORY_ID,
+        session_id=session_id,
+        actor_id=actor_id,
+        # Long-term memory retrieval: before each turn the session manager queries
+        # these namespaces and injects matching records into the prompt context.
+        # The namespace mirrors the USER_PREFERENCE template in agentcore.json
+        # ("/users/{actorId}/preferences"), filled in with the real actor_id.
+        # AgentCore stores namespaces with a trailing slash, so we add one here.
+        # relevance_score=0.3 is deliberately low so test memories show up easily.
+        retrieval_config={
+            f"/users/{actor_id}/preferences/": RetrievalConfig(top_k=5, relevance_score=0.3),
+        },
+    )
+    # The session manager persists every message as a short-term memory event
+    # (actor + session) and handles the long-term retrieval configured above.
+    return AgentCoreMemorySessionManager(
+        agentcore_memory_config=config,
+        region_name=MEMORY_REGION,
+    )
+
+
+# Reuses one Agent per (actor_id, session_id) so each session keeps its own in-process
 # conversation history (best-effort; resets on cold start). The cache is bounded
 # to 128 sessions with LRU eviction (least-recently-used is dropped and its
 # history reset) so a single process serving many sessions cannot leak history
-# between them or grow without limit. For durable history, attach a session manager.
+# between them or grow without limit. Durable history lives in AgentCore Memory via
+# the session manager. The key includes actor_id because the session manager is
+# bound to one actor, and AgentCore Memory supports only one agent per session.
 def agent_factory():
     cache = OrderedDict()
-    def get_or_create_agent(session_id):
-        if session_id in cache:
-            cache.move_to_end(session_id)
-            return cache[session_id]
+    def get_or_create_agent(actor_id: str, session_id: str) -> Agent:
+        key = (actor_id, session_id)
+        if key in cache:
+            cache.move_to_end(key)
+            return cache[key]
         if len(cache) >= 128:
             cache.popitem(last=False)
-        cache[session_id] = Agent(
+        cache[key] = Agent(
             model=load_model(),
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             tools=tools,
             conversation_manager=_make_conversation_manager(),
+            session_manager=_make_session_manager(actor_id, session_id),
             hooks=[
             ],
         )
-        return cache[session_id]
+        return cache[key]
     return get_or_create_agent
 get_or_create_agent = agent_factory()
 
@@ -319,10 +375,14 @@ async def invoke(payload, context):
     log.info("Invoking Agent.....")
 
 
-    session_id = getattr(context, 'session_id', 'default-session')
-    agent = get_or_create_agent(session_id)
-
+    # Validates the payload is a JSON object, so payload.get() below is safe.
     prompt = _extract_prompt(payload)
+
+    # actor_id scopes long-term memories to a user; this assistant serves administrators.
+    actor_id = payload.get("actor_id") or DEFAULT_ACTOR_ID
+    # Prefer an explicit session_id in the payload, then the runtime session header.
+    session_id = payload.get("session_id") or getattr(context, "session_id", None) or "default-session"
+    agent = get_or_create_agent(actor_id, session_id)
 
 
     async for event in agent.stream_async(
